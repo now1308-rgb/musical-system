@@ -419,6 +419,32 @@ function sparkSvg(prices, color) {
 }
 
 // =========================================================
+// MCP 유틸 — callMcpTool 반환 포맷 파싱
+// =========================================================
+
+// callMcpTool 실제 반환 포맷: { content: [{ type: 'text', text: '...' }] }
+function parseResp(raw) {
+  if (!raw) return null;
+  if (raw.content && Array.isArray(raw.content) && raw.content[0]?.type === 'text') {
+    try { return JSON.parse(raw.content[0].text); } catch { return raw.content[0].text; }
+  }
+  return raw;
+}
+
+// MCP 도구 호출 래퍼 — 환경에 callMcpTool 없으면 null 반환 (fallback 처리 책임은 호출부)
+async function callMcp(toolName, params = {}) {
+  try {
+    if (typeof window.callMcpTool === 'function') {
+      const raw = await window.callMcpTool(toolName, params);
+      return parseResp(raw);
+    }
+  } catch (e) {
+    console.warn(`MCP "${toolName}" 호출 실패:`, e);
+  }
+  return null;
+}
+
+// =========================================================
 // 렌더링
 // =========================================================
 
@@ -596,14 +622,28 @@ function selectStock(key) {
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function renderDart() {
-  document.getElementById('dartEl').innerHTML = DART.map(d => `
-    <div class="dart-item">
-      <div class="dart-co">${d.co}</div>
-      <div class="dart-txt">${d.title}</div>
-      <span class="badge ${d.badge}">${d.btxt}</span>
-      <div class="dart-time">${d.time}</div>
-    </div>`).join('');
+function dartItemHtml(d) {
+  return `<div class="dart-item">
+    <div class="dart-co">${d.co}</div>
+    <div class="dart-txt">${d.title}</div>
+    <span class="badge ${d.badge}">${d.btxt}</span>
+    <div class="dart-time">${d.time}</div>
+  </div>`;
+}
+
+async function renderDart() {
+  const el = document.getElementById('dartEl');
+  el.innerHTML = '<div style="padding:18px 20px;color:var(--muted);font-size:13px">공시 불러오는 중…</div>';
+
+  // DART MCP 도구가 연결된 환경이면 실시간 데이터 우선 시도
+  const live = await callMcp('dart_recent_disclosures', { count: 7 });
+  if (Array.isArray(live) && live.length) {
+    el.innerHTML = live.map(dartItemHtml).join('');
+    return;
+  }
+
+  // fallback: 모의 데이터
+  el.innerHTML = DART.map(dartItemHtml).join('');
 }
 
 function renderNews() {
@@ -628,14 +668,14 @@ function refresh() {
 // 초기화
 // =========================================================
 
-function init() {
+async function init() {
   renderClock();
   setInterval(renderClock, 1000);
   renderFx();
   renderSentiment();
   renderSummary();
   renderStocks();
-  renderDart();
+  await renderDart();   // MCP 응답 대기
   renderNews();
   setTimeout(() => selectStock('kospi'), 150);
 }
