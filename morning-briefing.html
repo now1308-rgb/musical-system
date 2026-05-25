@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>한국 주식 모닝 브리핑</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --bg2:     #161b22;
+      --card:    #1c2433;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --dim:     #484f58;
+      --up:      #f85149;
+      --down:    #388bfd;
+      --green:   #3fb950;
+      --yellow:  #d29922;
+      --purple:  #bc8cff;
+      --accent:  #58a6ff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      max-width: 1120px;
+      margin: 0 auto;
+      font-size: 14px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: -.5px; }
+    header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .hdr-r { text-align: right; }
+    #clock { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    #refDate { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .refresh-btn {
+      margin-top: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      transition: all .15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Section ── */
+    .section { margin-bottom: 28px; }
+    .sec-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sec-title::before {
+      content: '';
+      width: 3px; height: 13px;
+      background: var(--accent);
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    /* ── Overview ── */
+    .ov-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .ov-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .ov-label { font-size: 11px; color: var(--muted); margin-bottom: 12px; font-weight: 500; }
+
+    /* FX */
+    .fx-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .fx-pair { font-size: 12px; color: var(--muted); }
+    .fx-val  { font-size: 15px; font-weight: 700; }
+    .fx-chg  { font-size: 11px; margin-left: 6px; }
+
+    /* Sentiment */
+    .sent-score { font-size: 34px; font-weight: 800; line-height: 1; }
+    .sent-lbl   { font-size: 13px; font-weight: 600; margin-top: 4px; }
+    .sent-bar-wrap {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .sent-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(to right, #388bfd 0%, #3fb950 50%, #f85149 100%);
+    }
+    .flow-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Market summary */
+    .sum-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── Stock Cards ── */
+    .stocks-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .stock-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all .15s;
+      position: relative;
+      min-height: 110px;
+    }
+    .stock-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+    .stock-card.selected { border-color: var(--accent); background: #172030; }
+    .sc-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .sc-code { font-size: 11px; color: var(--dim); margin-bottom: 8px; }
+    .sc-price { font-size: 18px; font-weight: 700; margin-bottom: 3px; }
+    .sc-chg  { font-size: 12px; margin-bottom: 6px; }
+    .sc-vol  { font-size: 11px; color: var(--dim); }
+    .sc-spark { position: absolute; bottom: 10px; right: 10px; }
+
+    .up   { color: var(--up); }
+    .dn   { color: var(--down); }
+    .neu  { color: var(--muted); }
+
+    /* ── Chart ── */
+    .chart-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: none;
+    }
+    .chart-box.visible { display: block; }
+    .chart-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .chart-title { font-size: 15px; font-weight: 700; }
+    .chart-stats { display: flex; gap: 24px; }
+    .cstat { text-align: right; }
+    .cstat-lbl { font-size: 11px; color: var(--muted); }
+    .cstat-val { font-size: 13px; font-weight: 600; }
+    .chart-wrap { position: relative; height: 240px; }
+
+    /* ── DART ── */
+    .dart-list {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .dart-item {
+      display: grid;
+      grid-template-columns: 110px 1fr auto 70px;
+      gap: 14px;
+      align-items: center;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+      cursor: pointer;
+    }
+    .dart-item:last-child { border-bottom: none; }
+    .dart-item:hover { background: rgba(255,255,255,.025); }
+    .dart-co   { font-size: 13px; font-weight: 600; color: var(--accent); }
+    .dart-txt  { font-size: 13px; line-height: 1.45; }
+    .dart-time { font-size: 12px; color: var(--dim); text-align: right; }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .b-key { background: rgba(188,140,255,.15); color: var(--purple); }
+    .b-reg { background: rgba(63,185,80,.15);   color: var(--green);  }
+    .b-fin { background: rgba(210,153,34,.15);  color: var(--yellow); }
+    .b-etc { background: rgba(88,166,255,.15);  color: var(--accent); }
+
+    /* ── News ── */
+    .news-list {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .news-item {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .news-item:last-child { border-bottom: none; }
+    .news-item:hover { background: rgba(255,255,255,.025); }
+    .news-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .news-src  { font-size: 11px; color: var(--accent); font-weight: 600; }
+    .news-time { font-size: 11px; color: var(--dim); }
+    .news-ttl  { font-size: 13px; line-height: 1.5; }
+    .news-prev { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 11px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 800px) {
+      .ov-grid     { grid-template-columns: 1fr; }
+      .stocks-grid { grid-template-columns: repeat(2, 1fr); }
+      .dart-item   { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
+      .dart-co     { grid-column: 1; }
+      .dart-time   { grid-column: 2; }
+      .dart-txt    { grid-column: 1 / -1; }
+      .badge       { grid-column: 1; }
+      .chart-stats { flex-direction: column; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📈 한국 주식 모닝 브리핑</h1>
+    <div class="sub">실시간 시장 현황 · DART 공시 · 코스피 뉴스</div>
+  </div>
+  <div class="hdr-r">
+    <div id="clock">--:--:--</div>
+    <div id="refDate">기준일: --</div>
+    <button class="refresh-btn" onclick="refresh()">↺ 새로고침</button>
+  </div>
+</header>
+
+<!-- 1. 시장 현황 -->
+<div class="section">
+  <div class="sec-title">시장 현황</div>
+  <div class="ov-grid">
+    <div class="ov-card"><div class="ov-label">환율 (원화 기준)</div><div id="fxEl"></div></div>
+    <div class="ov-card"><div class="ov-label">시장 분위기</div><div id="sentEl"></div></div>
+    <div class="ov-card"><div class="ov-label">오늘의 시장</div><div id="sumEl"></div></div>
+  </div>
+</div>
+
+<!-- 2. 주요 종목 -->
+<div class="section">
+  <div class="sec-title">주요 종목</div>
+  <div class="stocks-grid" id="stocksGrid"></div>
+</div>
+
+<!-- 3. 30일 차트 -->
+<div class="section">
+  <div class="chart-box" id="chartBox">
+    <div class="chart-hdr">
+      <div class="chart-title" id="chartTitle">-</div>
+      <div class="chart-stats" id="chartStats"></div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="mainChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 4. DART 공시 -->
+<div class="section">
+  <div class="sec-title">DART 신규 공시</div>
+  <div class="dart-list" id="dartEl"></div>
+</div>
+
+<!-- 5. 코스피 뉴스 -->
+<div class="section">
+  <div class="sec-title">코스피 시장 뉴스</div>
+  <div class="news-list" id="newsEl"></div>
+</div>
+
+<footer>
+  ※ 시세·공시·뉴스는 시연용 모의 데이터입니다. 실제 투자 판단에 활용하지 마세요.<br>
+  실거래 데이터 연동이 필요한 경우 DART OpenAPI, KIS OpenAPI, 뉴스 API 키 등록이 필요합니다.
+</footer>
+
+<script>
+// =========================================================
+// 데이터
+// =========================================================
+
+const FX = [
+  { pair: 'USD/KRW', val: 1368.50, chg: +2.30,  pct: +0.17 },
+  { pair: 'JPY/KRW', val:    9.08, chg: -0.02,  pct: -0.22 },
+  { pair: 'EUR/KRW', val: 1498.20, chg: +5.10,  pct: +0.34 },
+  { pair: 'CNY/KRW', val:  188.60, chg: +0.80,  pct: +0.43 },
+];
+
+const STOCKS = [
+  { key:'kospi',   name:'코스피',          code:'KOSPI',   price:2847.32, chg:+15.42, pct:+0.54, vol:'6.2조',   vola:0.8,  isIdx:true  },
+  { key:'kosdaq',  name:'코스닥',          code:'KOSDAQ',  price:892.15,  chg:+8.73,  pct:+0.99, vol:'5.8조',   vola:1.2,  isIdx:true  },
+  { key:'samsung', name:'삼성전자',        code:'005930',  price:82100,   chg:-400,   pct:-0.48, vol:'1.2조',   vola:1.5,  isIdx:false },
+  { key:'hynix',   name:'SK하이닉스',      code:'000660',  price:218500,  chg:+5500,  pct:+2.58, vol:'8,432억', vola:2.5,  isIdx:false },
+  { key:'hyundai', name:'현대차',          code:'005380',  price:285000,  chg:+3000,  pct:+1.06, vol:'2,156억', vola:1.8,  isIdx:false },
+  { key:'lges',    name:'LG에너지솔루션',  code:'373220',  price:412000,  chg:-8000,  pct:-1.90, vol:'1,823억', vola:2.2,  isIdx:false },
+  { key:'naver',   name:'NAVER',           code:'035420',  price:198000,  chg:+2500,  pct:+1.28, vol:'3,456억', vola:2.0,  isIdx:false },
+  { key:'kakao',   name:'카카오',          code:'035720',  price:38550,   chg:-350,   pct:-0.90, vol:'2,145억', vola:2.5,  isIdx:false },
+];
+
+const DART = [
+  { co:'SK하이닉스',      title:'주요사항보고서(타법인주식및출자증권취득결정) — HBM4 생산라인 증설을 위한 자본적 지출 결정',        badge:'b-key', btxt:'주요사항', time:'08:52' },
+  { co:'삼성전자',        title:'임원ㆍ주요주주특정증권등소유상황보고서',                                                             badge:'b-reg', btxt:'정기공시', time:'08:30' },
+  { co:'현대자동차',      title:'연결재무제표기준영업(잠정)실적(공정공시) — 2026년 1분기 영업이익 5.2조원 달성',                     badge:'b-fin', btxt:'실적공시', time:'08:15' },
+  { co:'POSCO홀딩스',     title:'분기보고서 (2026.03)',                                                                               badge:'b-fin', btxt:'재무공시', time:'07:58' },
+  { co:'LG에너지솔루션',  title:'기업설명회(IR) 개최 안내 — 2026년 1분기 실적 발표 및 중장기 사업 전략 공유',                       badge:'b-etc', btxt:'기타',     time:'07:40' },
+  { co:'NAVER',           title:'주식등의대량보유상황보고서(일반) — 국민연금공단 지분 5.1% 보고',                                    badge:'b-reg', btxt:'지분공시', time:'07:25' },
+  { co:'카카오',          title:'자기주식취득결정 — 1,000억원 규모 자사주 매입 계획 공시',                                           badge:'b-key', btxt:'주요사항', time:'07:10' },
+];
+
+const NEWS = [
+  { src:'한국경제',     time:'08:45', ttl:'외국인, 코스피서 3거래일 연속 순매수…반도체주 집중 매입',                        prev:'외국인 투자자가 삼성전자·SK하이닉스를 중심으로 3거래일 연속 순매수를 이어가며 코스피 지수가 2,850선 회복을 시도하고 있다.' },
+  { src:'연합인포맥스', time:'08:30', ttl:'美 연준, 6월 금리 동결 유력…국내 증시 안도 랠리 기대',                          prev:'연방준비제도(Fed)가 다음달 FOMC에서 기준금리를 동결할 가능성이 높아지면서 국내외 증시에 긍정적 영향을 미칠 것으로 예상된다.' },
+  { src:'매일경제',     time:'08:15', ttl:'SK하이닉스 HBM4 양산 성공…엔비디아 납품 확정',                                  prev:'SK하이닉스가 차세대 고대역폭메모리(HBM4) 양산에 성공해 엔비디아에 공급하기로 확정했다고 밝혔다. 목표주가 28만원 상향 잇따라.' },
+  { src:'서울경제',     time:'07:58', ttl:'현대차 1분기 영업익 5.2조…미국 IRA 혜택 지속 수혜',                             prev:'현대자동차가 인플레이션감축법(IRA) 전기차 세액공제 혜택을 지속적으로 받으며 1분기 영업이익 5.2조원을 달성했다.' },
+  { src:'이데일리',     time:'07:40', ttl:'코스닥 바이오주 강세…셀트리온 52주 신고가 경신',                                prev:'코스닥 시장에서 바이오·헬스케어 섹터가 강세를 보이며 셀트리온이 52주 신고가를 경신했다. 외국인과 기관의 동반 매수세 유입.' },
+  { src:'파이낸셜뉴스', time:'07:20', ttl:'원/달러 환율 1,368원대 안정…무역수지 흑자 영향',                                prev:'원/달러 환율이 1,368원대에서 안정세를 보이고 있다. 4월 무역수지가 50억 달러 흑자를 기록하며 원화 강세 요인으로 작용하고 있다.' },
+  { src:'KBS 경제',     time:'07:05', ttl:'뉴욕증시 나스닥 0.8% 상승 마감…빅테크 실적 기대감',                             prev:'전날 뉴욕증시에서 나스닥 지수가 0.8% 상승 마감했다. 엔비디아·마이크로소프트 등 빅테크 기업들의 실적 호조 기대감이 반영됐다.' },
+];
+
+// =========================================================
+// 유틸
+// =========================================================
+
+const fmt = (n, d = 0) => n.toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
+const arrow = (n, d = 0) => `${n >= 0 ? '▲' : '▼'}${fmt(Math.abs(n), d)}`;
+const cls = n => n > 0 ? 'up' : n < 0 ? 'dn' : 'neu';
+
+function getTradingDates(days = 30) {
+  const out = [];
+  const d = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const t = new Date(d);
+    t.setDate(d.getDate() - i);
+    if (t.getDay() !== 0 && t.getDay() !== 6)
+      out.push(`${t.getMonth()+1}/${t.getDate()}`);
+  }
+  return out;
+}
+
+function genHistory(price, vola) {
+  const dates = getTradingDates(42); // 42일치 달력 → 약 30거래일
+  const prices = new Array(dates.length);
+  prices[prices.length - 1] = price;
+  for (let i = prices.length - 2; i >= 0; i--) {
+    const d = (Math.random() - 0.47) * vola;
+    prices[i] = prices[i + 1] * (1 - d / 100);
+  }
+  return { dates, prices: prices.map(p => parseFloat(p.toFixed(2))) };
+}
+
+function sparkSvg(prices, color) {
+  const W = 68, H = 26;
+  const mn = Math.min(...prices), mx = Math.max(...prices), rng = mx - mn || 1;
+  const pts = prices.map((p, i) => {
+    const x = (i / (prices.length - 1)) * W;
+    const y = H - ((p - mn) / rng) * (H - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+// =========================================================
+// 렌더링
+// =========================================================
+
+function renderClock() {
+  const n = new Date();
+  const pad = v => String(v).padStart(2, '0');
+  document.getElementById('clock').textContent =
+    `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  const days = ['일','월','화','수','목','금','토'];
+  document.getElementById('refDate').textContent =
+    `기준일: ${n.getFullYear()}.${pad(n.getMonth()+1)}.${pad(n.getDate())}(${days[n.getDay()]})`;
+}
+
+function renderFx() {
+  document.getElementById('fxEl').innerHTML = FX.map(f => `
+    <div class="fx-row">
+      <span class="fx-pair">${f.pair}</span>
+      <span>
+        <span class="fx-val ${cls(f.chg)}">${fmt(f.val, 2)}</span>
+        <span class="fx-chg ${cls(f.chg)}">${arrow(f.chg, 2)} (${pct(f.pct)})</span>
+      </span>
+    </div>`).join('');
+}
+
+function renderSentiment() {
+  const score = 62;
+  const lbl = score >= 70 ? '극단적 탐욕' : score >= 55 ? '탐욕' : score >= 45 ? '중립' : score >= 30 ? '공포' : '극단적 공포';
+  const color = score >= 55 ? 'var(--up)' : score >= 45 ? 'var(--yellow)' : 'var(--down)';
+  document.getElementById('sentEl').innerHTML = `
+    <div class="sent-score" style="color:${color}">${score}</div>
+    <div class="sent-lbl" style="color:${color}">공포&탐욕: ${lbl}</div>
+    <div class="sent-bar-wrap">
+      <div class="sent-bar-fill" style="width:${score}%"></div>
+    </div>
+    <div class="flow-row" style="margin-top:8px">
+      <span>외국인 <span class="up">+2,847억</span></span>
+      <span>기관 <span class="dn">-1,234억</span></span>
+    </div>
+    <div class="flow-row" style="margin-top:2px">
+      <span>개인 <span class="dn">-1,613억</span></span>
+      <span>프로그램 <span class="up">+456억</span></span>
+    </div>`;
+}
+
+function renderSummary() {
+  document.getElementById('sumEl').innerHTML = `
+    <div class="sum-row"><span>장 구분</span><span class="up">정규장 진행중</span></div>
+    <div class="sum-row"><span>거래대금</span><span style="color:var(--text)">12.0조원</span></div>
+    <div class="sum-row"><span>상한가</span><span class="up">12종목</span></div>
+    <div class="sum-row"><span>하한가</span><span class="dn">1종목</span></div>
+    <div class="sum-row"><span>상승:하락</span><span style="color:var(--text)">521 : 312</span></div>
+    <div class="sum-row"><span>보합</span><span style="color:var(--text)">89종목</span></div>`;
+}
+
+window._hist = {};
+
+function renderStocks() {
+  STOCKS.forEach(s => { window._hist[s.key] = genHistory(s.price, s.vola); });
+
+  document.getElementById('stocksGrid').innerHTML = STOCKS.map(s => {
+    const h = window._hist[s.key];
+    const sparkPrices = h.prices.slice(-10);
+    const color = s.pct >= 0 ? '#f85149' : '#388bfd';
+    const priceStr = s.isIdx ? fmt(s.price, 2) : fmt(s.price) + '원';
+    return `
+      <div class="stock-card" data-key="${s.key}" onclick="selectStock('${s.key}')">
+        <div class="sc-name">${s.name}</div>
+        <div class="sc-code">${s.code}</div>
+        <div class="sc-price ${cls(s.pct)}">${priceStr}</div>
+        <div class="sc-chg ${cls(s.pct)}">${arrow(s.chg, s.isIdx ? 2 : 0)} (${pct(s.pct)})</div>
+        <div class="sc-vol">거래대금 ${s.vol}</div>
+        <div class="sc-spark">${sparkSvg(sparkPrices, color)}</div>
+      </div>`;
+  }).join('');
+}
+
+let chartInst = null;
+
+function selectStock(key) {
+  document.querySelectorAll('.stock-card').forEach(c =>
+    c.classList.toggle('selected', c.dataset.key === key));
+
+  const s = STOCKS.find(x => x.key === key);
+  const h = window._hist[key];
+  const box = document.getElementById('chartBox');
+  box.classList.add('visible');
+
+  document.getElementById('chartTitle').textContent =
+    `${s.name} (${s.code}) — 최근 30거래일 주가`;
+
+  const prices = h.prices;
+  const mn = Math.min(...prices), mx = Math.max(...prices);
+  const chg30 = ((prices[prices.length-1] - prices[0]) / prices[0] * 100);
+  const dec = s.isIdx ? 2 : 0;
+
+  document.getElementById('chartStats').innerHTML = `
+    <div class="cstat">
+      <div class="cstat-lbl">30일 등락률</div>
+      <div class="cstat-val ${cls(chg30)}">${chg30 >= 0 ? '+' : ''}${chg30.toFixed(2)}%</div>
+    </div>
+    <div class="cstat">
+      <div class="cstat-lbl">30일 최고</div>
+      <div class="cstat-val">${fmt(mx, dec)}</div>
+    </div>
+    <div class="cstat">
+      <div class="cstat-lbl">30일 최저</div>
+      <div class="cstat-val">${fmt(mn, dec)}</div>
+    </div>`;
+
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+
+  const isUp = s.pct >= 0;
+  const lineColor = isUp ? '#f85149' : '#388bfd';
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 240);
+  grad.addColorStop(0, isUp ? 'rgba(248,81,73,.25)' : 'rgba(56,139,253,.25)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+  chartInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: h.dates,
+      datasets: [{
+        data: prices,
+        borderColor: lineColor,
+        backgroundColor: grad,
+        borderWidth: 2,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: lineColor,
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1c2433',
+          titleColor: '#8b949e',
+          bodyColor: '#e6edf3',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: ctx => ` ${fmt(ctx.parsed.y, dec)}${s.isIdx ? '' : '원'}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: '#21262d' },
+          ticks: { color: '#8b949e', font: { size: 11 }, maxTicksLimit: 8 },
+          border: { color: '#30363d' }
+        },
+        y: {
+          position: 'right',
+          grid: { color: '#21262d' },
+          ticks: {
+            color: '#8b949e',
+            font: { size: 11 },
+            callback: v => fmt(v, s.isIdx ? 1 : 0)
+          },
+          border: { color: '#30363d' }
+        }
+      }
+    }
+  });
+
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderDart() {
+  document.getElementById('dartEl').innerHTML = DART.map(d => `
+    <div class="dart-item">
+      <div class="dart-co">${d.co}</div>
+      <div class="dart-txt">${d.title}</div>
+      <span class="badge ${d.badge}">${d.btxt}</span>
+      <div class="dart-time">${d.time}</div>
+    </div>`).join('');
+}
+
+function renderNews() {
+  document.getElementById('newsEl').innerHTML = NEWS.map(n => `
+    <div class="news-item">
+      <div class="news-meta">
+        <span class="news-src">${n.src}</span>
+        <span class="news-time">${n.time}</span>
+      </div>
+      <div class="news-ttl">${n.ttl}</div>
+      <div class="news-prev">${n.prev}</div>
+    </div>`).join('');
+}
+
+function refresh() {
+  renderStocks();
+  const sel = document.querySelector('.stock-card.selected');
+  if (sel) selectStock(sel.dataset.key);
+}
+
+// =========================================================
+// 초기화
+// =========================================================
+
+function init() {
+  renderClock();
+  setInterval(renderClock, 1000);
+  renderFx();
+  renderSentiment();
+  renderSummary();
+  renderStocks();
+  renderDart();
+  renderNews();
+  setTimeout(() => selectStock('kospi'), 150);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
