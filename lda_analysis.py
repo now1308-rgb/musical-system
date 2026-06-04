@@ -437,7 +437,99 @@ def save_topic_keyword_table(lda, num_topics: int = 7, top_n: int = 20,
 
 
 # ════════════════════════════════════════════════════════════════
-# 7. pyLDAvis 인터랙티브 시각화 (선택)
+# 7. 토픽 간 Jensen-Shannon 유사도 분석
+# ════════════════════════════════════════════════════════════════
+
+def compute_jsd_similarity(lda, dictionary) -> tuple[np.ndarray, np.ndarray]:
+    """
+    토픽-단어 분포 벡터 간 Jensen-Shannon Divergence를 계산하고
+    유사도 행렬(1 - JSD)을 반환한다.
+    """
+    import itertools
+    from gensim.matutils import jensen_shannon
+
+    num_topics = lda.num_topics
+    vocab_size = len(dictionary)
+
+    # 각 토픽의 전체 단어 확률 벡터 구성
+    topic_word_dists = []
+    for t in range(num_topics):
+        vec = np.zeros(vocab_size)
+        for word_id, prob in lda.get_topic_terms(t, topn=vocab_size):
+            vec[word_id] = prob
+        vec = vec / vec.sum()  # 정규화
+        topic_word_dists.append(vec)
+
+    jsd_matrix = np.zeros((num_topics, num_topics))
+    for i, j in itertools.combinations(range(num_topics), 2):
+        jsd = jensen_shannon(topic_word_dists[i], topic_word_dists[j])
+        jsd_matrix[i, j] = jsd_matrix[j, i] = jsd
+
+    similarity_matrix = 1 - jsd_matrix
+    return jsd_matrix, similarity_matrix
+
+
+def plot_jsd_heatmap(jsd_matrix: np.ndarray, similarity_matrix: np.ndarray,
+                     num_topics: int = 7,
+                     save_dir: str = 'results'):
+    os.makedirs(save_dir, exist_ok=True)
+    labels = [f'T{t+1}\n{TOPIC_LABELS.get(t, (f"T{t+1}",""))[0][:6]}' for t in range(num_topics)]
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    for ax, matrix, title, cmap in [
+        (axes[0], jsd_matrix,        '토픽 간 JSD (낮을수록 유사)',   'YlOrRd'),
+        (axes[1], similarity_matrix, '토픽 간 유사도 (1 - JSD)',      'YlGn'),
+    ]:
+        im = ax.imshow(matrix, cmap=cmap, vmin=0, vmax=1)
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        ax.set_xticks(range(num_topics))
+        ax.set_yticks(range(num_topics))
+        ax.set_xticklabels(labels, fontsize=8)
+        ax.set_yticklabels(labels, fontsize=8)
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        # 셀 값 표기
+        for i in range(num_topics):
+            for j in range(num_topics):
+                ax.text(j, i, f'{matrix[i, j]:.2f}',
+                        ha='center', va='center', fontsize=7,
+                        color='white' if matrix[i, j] > 0.6 else 'black')
+
+    plt.suptitle('토픽 간 Jensen-Shannon 유사도 분석', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    path = os.path.join(save_dir, 'JSD_토픽유사도.png')
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"[저장] JSD 히트맵 → {path}")
+
+
+def save_jsd_table(jsd_matrix: np.ndarray, similarity_matrix: np.ndarray,
+                   num_topics: int = 7,
+                   save_path: str = 'results/JSD_토픽유사도.csv'):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    rows = []
+    for i in range(num_topics):
+        for j in range(i + 1, num_topics):
+            label_i = TOPIC_LABELS.get(i, (f'Topic {i+1}', ''))[0]
+            label_j = TOPIC_LABELS.get(j, (f'Topic {j+1}', ''))[0]
+            rows.append({
+                '토픽 A': f'T{i+1} {label_i}',
+                '토픽 B': f'T{j+1} {label_j}',
+                'JSD':    round(jsd_matrix[i, j], 4),
+                '유사도(1-JSD)': round(similarity_matrix[i, j], 4),
+                '해석': '유사' if similarity_matrix[i, j] >= 0.7
+                        else '보통' if similarity_matrix[i, j] >= 0.4
+                        else '상이',
+            })
+    df = pd.DataFrame(rows).sort_values('유사도(1-JSD)', ascending=False)
+    df.to_csv(save_path, index=False, encoding='utf-8-sig')
+    print(f"[저장] JSD 유사도표 → {save_path}")
+    print(df.to_string(index=False))
+    return df
+
+
+# ════════════════════════════════════════════════════════════════
+# 8. pyLDAvis 인터랙티브 시각화 (선택)
 # ════════════════════════════════════════════════════════════════
 
 def save_pyldavis(lda, corpus, dictionary,
@@ -513,6 +605,13 @@ def main(
         plot_document_topic_heatmap(lda, corpus, num_topics=num_topics)
         plot_topic_distribution(lda, corpus, num_topics=num_topics)
         save_topic_keyword_table(lda, num_topics=num_topics)
+
+        # JSD 토픽 유사도 분석
+        print("\n[JSD] 토픽 간 Jensen-Shannon 유사도 계산 중...")
+        jsd_matrix, similarity_matrix = compute_jsd_similarity(lda, dictionary)
+        plot_jsd_heatmap(jsd_matrix, similarity_matrix, num_topics=num_topics)
+        save_jsd_table(jsd_matrix, similarity_matrix, num_topics=num_topics)
+
         save_pyldavis(lda, corpus, dictionary)
 
         # 모델 저장
