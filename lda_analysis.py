@@ -529,7 +529,112 @@ def save_jsd_table(jsd_matrix: np.ndarray, similarity_matrix: np.ndarray,
 
 
 # ════════════════════════════════════════════════════════════════
-# 8. pyLDAvis 인터랙티브 시각화 (선택)
+# 8. 토픽 유사도 네트워크 시각화
+# ════════════════════════════════════════════════════════════════
+
+TOPIC_NAMES = {
+    0: "T1: 직무 스트레스 & 소진",
+    1: "T2: 법·제도적 취약성",
+    2: "T3: 수퍼비전 & 사례 자문",
+    3: "T4: 동료 지지 네트워크",
+    4: "T5: 개인적 자기 돌봄",
+    5: "T6: 지역적 특수성",
+    6: "T7: 의미 재구성 & 성장",
+}
+
+# 토픽 성격별 노드 색상
+TOPIC_COLORS = {
+    0: '#e74c3c',  # 위협 요인 - 빨강
+    1: '#e67e22',  # 위협 요인 - 주황
+    2: '#3498db',  # 보호(전문) - 파랑
+    3: '#2ecc71',  # 보호(관계) - 초록
+    4: '#27ae60',  # 보호(개인) - 진초록
+    5: '#f39c12',  # 맥락적 조건 - 금색
+    6: '#9b59b6',  # 성장 지향 - 보라
+}
+
+
+def plot_topic_network(similarity_matrix: np.ndarray,
+                       num_topics: int = 7,
+                       threshold: float = 0.30,
+                       save_path: str = 'results/토픽_유사도_네트워크.png'):
+    try:
+        import networkx as nx
+    except ImportError:
+        print("[건너뜀] networkx 미설치 → pip install networkx")
+        return
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    G = nx.Graph()
+    for i in range(num_topics):
+        G.add_node(i, label=TOPIC_NAMES.get(i, f'Topic {i+1}'))
+
+    for i in range(num_topics):
+        for j in range(i + 1, num_topics):
+            if similarity_matrix[i, j] >= threshold:
+                G.add_edge(i, j, weight=similarity_matrix[i, j])
+
+    pos = nx.spring_layout(G, seed=42, k=1.5)
+    labels = {i: TOPIC_NAMES.get(i, f'T{i+1}') for i in range(num_topics)}
+    node_colors = [TOPIC_COLORS.get(i, '#95a5a6') for i in range(num_topics)]
+    edge_weights = [d['weight'] * 5 for _, _, d in G.edges(data=True)]
+    edge_labels = {
+        (i, j): f"{d['weight']:.2f}"
+        for i, j, d in G.edges(data=True)
+    }
+
+    fig, ax = plt.subplots(figsize=(14, 11))
+
+    nx.draw_networkx_nodes(G, pos, ax=ax,
+                           node_size=2500,
+                           node_color=node_colors,
+                           alpha=0.9,
+                           edgecolors='white',
+                           linewidths=2)
+    nx.draw_networkx_edges(G, pos, ax=ax,
+                           width=edge_weights,
+                           edge_color='#7f8c8d',
+                           alpha=0.6)
+    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax,
+                            font_size=8.5, font_weight='bold')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
+                                 font_size=7, label_pos=0.35)
+
+    # 범례
+    from matplotlib.patches import Patch
+    legend_items = [
+        Patch(color='#e74c3c', label='위협 요인'),
+        Patch(color='#3498db', label='보호 요인(전문적)'),
+        Patch(color='#2ecc71', label='보호 요인(관계적)'),
+        Patch(color='#27ae60', label='보호 요인(개인적)'),
+        Patch(color='#f39c12', label='맥락적 조건'),
+        Patch(color='#9b59b6', label='성장 지향성'),
+    ]
+    ax.legend(handles=legend_items, loc='lower left', fontsize=8,
+              framealpha=0.9, title='토픽 성격')
+
+    ax.set_title(
+        f'LDA 토픽 간 유사도 네트워크 (Jensen-Shannon Divergence 기반, threshold={threshold})',
+        fontsize=13, fontweight='bold', pad=15,
+    )
+    ax.axis('off')
+
+    # 연결 없는 고립 노드 안내
+    isolated = list(nx.isolates(G))
+    if isolated:
+        names = [TOPIC_NAMES.get(i, f'T{i+1}') for i in isolated]
+        ax.text(0.01, 0.01, f'비연결 토픽: {", ".join(names)}',
+                transform=ax.transAxes, fontsize=7, color='gray')
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[저장] 토픽 유사도 네트워크 → {save_path}")
+
+
+# ════════════════════════════════════════════════════════════════
+# 9. pyLDAvis 인터랙티브 시각화 (선택)
 # ════════════════════════════════════════════════════════════════
 
 def save_pyldavis(lda, corpus, dictionary,
@@ -611,6 +716,7 @@ def main(
         jsd_matrix, similarity_matrix = compute_jsd_similarity(lda, dictionary)
         plot_jsd_heatmap(jsd_matrix, similarity_matrix, num_topics=num_topics)
         save_jsd_table(jsd_matrix, similarity_matrix, num_topics=num_topics)
+        plot_topic_network(similarity_matrix, num_topics=num_topics)
 
         save_pyldavis(lda, corpus, dictionary)
 
